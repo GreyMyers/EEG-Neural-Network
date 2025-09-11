@@ -7,6 +7,8 @@
 # another python implementation of CSP can be found here:
 # https://github.com/spolsley/common-spatial-patterns
 
+# Script to train the model
+
 
 from sklearn.model_selection import KFold
 from dataset_tools import split_data, standardize, load_data, preprocess_raw_eeg, ACTIONS
