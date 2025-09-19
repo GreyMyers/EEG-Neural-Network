@@ -4,7 +4,7 @@ from tensorflow.keras.layers import Conv2D, BatchNormalization, MaxPooling2D, Ma
 from tensorflow.keras import regularizers, Model
 from tensorflow.keras.constraints import max_norm
 from tensorflow.keras.models import Sequential
-from dataset_tools import ACTIONS
+# from dataset_tools import ACTIONS
 
 import tensorflow as tf
 import tensorflow.keras.backend
