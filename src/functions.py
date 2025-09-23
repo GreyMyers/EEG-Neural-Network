@@ -119,6 +119,59 @@ def split_data(starting_dir="personal_dataset", splitting_percentage=(70, 20, 10
                                     num_training_samples + num_validation_samples + num_test_samples):
                     np.save(file=os.path.join(tmp_dir, str(sample)), arr=action_data[sample])
 
+def load_data(starting_dir, shuffle=True, balance=False):
+    """
+        This function loads the personal_dataset from a directory where the classes
+        have been split into different folders where each file is a sample
+
+    :param starting_dir: the path of the personal_dataset you want to load
+    :param shuffle: bool, decides if the personal_dataset will be shuffled
+    :param balance: bool, decides if samples should be equal in cardinality between classes
+    :return: X, y: both python lists
+    """
+
+    data = [[] for i in range(len(ACTIONS))]
+    for i, action in enumerate(ACTIONS):
+
+        data_dir = os.path.join(starting_dir, action)
+        for file in sorted(os.listdir(data_dir)):
+            data[i].append(np.load(os.path.join(data_dir, file)))
+
+    if balance:
+        lengths = [len(data[i]) for i in range(len(ACTIONS))]
+        print(lengths)
+
+        # this is required if one class has more samples than the others
+        for i in range(len(ACTIONS)):
+            data[i] = data[i][:min(lengths)]
+
+        lengths = [len(data[i]) for i in range(len(ACTIONS))]
+        print(lengths)
+
+    # this is needed to shuffle the personal_dataset between classes, so the model
+    # won't train first on one single class and then pass to the next one
+    # but it trains on all classes "simultaneously"
+    combined_data = []
+
+    # we are using one hot encodings
+    for i in range(len(ACTIONS)):
+        lbl = np.zeros(len(ACTIONS), dtype=int)
+        lbl[i] = 1
+        for sample in data[i]:
+            combined_data.append([sample, lbl])
+
+    if shuffle:
+        np.random.shuffle(combined_data)
+
+    # create X, y:
+    X = []
+    y = []
+    for sample, label in combined_data:
+        X.append(sample)
+        y.append(label)
+
+    return np.array(X), np.array(y)
+
 def standardize(data, std_type="channel_wise"):
     if std_type == "feature_wise":
         for j in range(len(data[0, 0, :])):
