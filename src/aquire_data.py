@@ -43,7 +43,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--serial-port', type=str, help='serial port',
-                        required=False, default='/dev/ttyUSB0')
+                        required=False, default='COM3')
 
     # if you are on Linux remember to give permission to access the port:
     # sudo chmod 666 /dev/ttyUSB0
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     params = BrainFlowInputParams()
     params.serial_port = args.serial_port
 
-    board = BoardShim(0, params)
+    board = BoardShim(BoardIds.CYTON_BOARD.value, params)
     board.prepare_session()
 
     last_act = None
@@ -83,7 +83,10 @@ if __name__ == '__main__':
         board.stop_stream()
 
         sample = []
-        eeg_channels = BoardShim.get_eeg_channels(BoardIds.CYTON_BOARD.value)
+        
+        # Only using 2 channels (1 & 2)
+        eeg_channels = [1, 2]  
+
         for channel in eeg_channels:
             sample.append(data[channel])
 
