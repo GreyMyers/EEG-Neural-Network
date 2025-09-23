@@ -11,7 +11,7 @@
 
 
 from sklearn.model_selection import KFold
-from dataset_tools import split_data, standardize, load_data, preprocess_raw_eeg, ACTIONS
+from functions import split_data, standardize, load_data, preprocess_raw_eeg, ACTIONS
 from neural_nets import cris_net, res_net, TA_CSPNN, EEGNet
 
 from sklearn.model_selection import KFold, cross_val_score
