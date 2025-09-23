@@ -27,6 +27,19 @@ import time
 print(tf.__version__)
 print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
 
+def pad_or_trim(trial: np.ndarray, fixed_len: int = 1000) -> np.ndarray:
+    """
+    Ensure each trial has shape (channels, fixed_len).
+    Pads with zeros or trims on the right as needed.
+    """
+    # trial expected shape: (C, N)
+    n = trial.shape[1]
+    if n > fixed_len:
+        return trial[:, :fixed_len]
+    if n < fixed_len:
+        pad = np.zeros((trial.shape[0], fixed_len - n), dtype=trial.dtype)
+        return np.hstack([trial, pad])
+    return trial
 
 def fit_and_save(model, epochs, train_X, train_y, validation_X, validation_y, batch_size):
     # fits the network epoch by epoch and saves only accurate models
@@ -170,6 +183,12 @@ def main():
     # loading personal_dataset
     tmp_train_X, train_y = load_data(starting_dir="training_data", shuffle=True, balance=True)
     tmp_validation_X, validation_y = load_data(starting_dir="validation_data", shuffle=True, balance=True)
+
+
+    # Normalize all trials to fixed length (e.g., 4 s @ 250 Hz = 1000 samples)
+    FIXED_LEN = 1000
+    tmp_train_X = np.array([pad_or_trim(tr, FIXED_LEN) for tr in tmp_train_X])
+    tmp_validation_X = np.array([pad_or_trim(tr, FIXED_LEN) for tr in tmp_validation_X])
 
     # cleaning the raw personal_dataset
     train_X, fft_train_X = preprocess_raw_eeg(tmp_train_X, lowcut=7, highcut=45, coi3order=0)
