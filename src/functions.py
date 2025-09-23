@@ -7,6 +7,118 @@ import numpy as np
 import os
 import pkg_resources
 
+ACTIONS = ["left" , "right"]
+
+def split_data(starting_dir="personal_dataset", splitting_percentage=(70, 20, 10), shuffle=True, coupling=False,
+               division_factor=0):
+    """
+        This function splits the dataset in three folders, training, validation, test
+        Has to be run just everytime the dataset is changed
+
+    :param starting_dir: string, the directory of the dataset
+    :param splitting_percentage:  tuple, (training_percentage, validation_percentage, test_percentage)
+    :param shuffle: bool, decides if the personal_dataset will be shuffled
+    :param coupling: bool, decides if samples are shuffled singularly or by couples
+    :param division_factor: int, if the personal_dataset used is made of FFTs which are taken from multiple sittings
+                            one sample might be very similar to an adjacent one, so not all the samples
+                            should be considered because some very similar samples could fall both in
+                            validation and training, thus the division_factor divides the personal_dataset.
+                            if division_factor == 0 the function will maintain all the personal_dataset
+
+    """
+    training_per, validation_per, test_per = splitting_percentage
+
+    if not os.path.exists("training_data") and not os.path.exists("validation_data") \
+            and not os.path.exists("test_data"):
+
+        # creating directories
+
+        os.mkdir("training_data")
+        os.mkdir("validation_data")
+        os.mkdir("test_data")
+
+        for action in ACTIONS:
+
+            action_data = []
+            all_action_data = []
+            # this will contain all the samples relative to the action
+
+            data_dir = os.path.join(starting_dir, action)
+            # sorted will make sure that the personal_dataset is appended in the order of acquisition
+            # since each sample file is saved as "timestamp".npy
+            for file in sorted(os.listdir(data_dir)):
+                # each item is a ndarray of shape (8, 90) that represents ≈1sec of acquisition
+                all_action_data.append(np.load(os.path.join(data_dir, file)))
+
+            # TODO: make this coupling part readable
+            # coupling was used when overlapping FFTs were used
+            # is now deprecated with EEG models and very time-distant acquisitions
+            if coupling:
+                # coupling near time acquired samples to reduce the probability of having
+                # similar samples in both train and validation sets
+                coupled_actions = []
+                first = True
+                for i in range(len(all_action_data)):
+                    if division_factor != 0:
+                        if i % division_factor == 0:
+                            if first:
+                                tmp_act = all_action_data[i]
+                                first = False
+                            else:
+                                coupled_actions.append([tmp_act, all_action_data[i]])
+                                first = True
+                    else:
+                        if first:
+                            tmp_act = all_action_data[i]
+                            first = False
+                        else:
+                            coupled_actions.append([tmp_act, all_action_data[i]])
+                            first = True
+
+                if shuffle:
+                    np.random.shuffle(coupled_actions)
+
+                # reformatting all the samples in a single list
+                for i in range(len(coupled_actions)):
+                    for j in range(len(coupled_actions[i])):
+                        action_data.append(coupled_actions[i][j])
+
+            else:
+                for i in range(len(all_action_data)):
+                    if division_factor != 0:
+                        if i % division_factor == 0:
+                            action_data.append(all_action_data[i])
+                    else:
+                        action_data = all_action_data
+
+                if shuffle:
+                    np.random.shuffle(action_data)
+
+            num_training_samples = int(len(action_data) * training_per / 100)
+            num_validation_samples = int(len(action_data) * validation_per / 100)
+            num_test_samples = int(len(action_data) * test_per / 100)
+
+            # creating subdirectories for each action
+            tmp_dir = os.path.join("training_data", action)
+            if not os.path.exists(tmp_dir):
+                os.mkdir(tmp_dir)
+            for sample in range(num_training_samples):
+                np.save(file=os.path.join(tmp_dir, str(sample)), arr=action_data[sample])
+
+            tmp_dir = os.path.join("validation_data", action)
+            if not os.path.exists(tmp_dir):
+                os.mkdir(tmp_dir)
+            for sample in range(num_training_samples, num_training_samples + num_validation_samples):
+                np.save(file=os.path.join(tmp_dir, str(sample)), arr=action_data[sample])
+
+            if test_per != 0:
+                tmp_dir = os.path.join("test_data", action)
+                if not os.path.exists(tmp_dir):
+                    os.mkdir(tmp_dir)
+                for sample in range(num_training_samples + num_validation_samples,
+                                    num_training_samples + num_validation_samples + num_test_samples):
+                    np.save(file=os.path.join(tmp_dir, str(sample)), arr=action_data[sample])
+
 def standardize(data, std_type="channel_wise"):
     if std_type == "feature_wise":
         for j in range(len(data[0, 0, :])):
