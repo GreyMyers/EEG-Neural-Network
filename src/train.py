@@ -181,8 +181,8 @@ def main():
     split_data(shuffle=True, splitting_percentage=(70, 20, 10), division_factor=0, coupling=False)
 
     # loading personal_dataset
-    tmp_train_X, train_y = load_data(starting_dir="training_data", shuffle=True, balance=True)
-    tmp_validation_X, validation_y = load_data(starting_dir="validation_data", shuffle=True, balance=True)
+    tmp_train_X, train_y = load_data(starting_dir=r"C:\Users\greym\Xavier\motor_imagery_dataset", shuffle=True, balance=True)
+    tmp_validation_X, validation_y = load_data(starting_dir=r"C:\Users\greym\Xavier\motor_imagery_dataset", shuffle=True, balance=True)
 
 
     # Normalize all trials to fixed length (e.g., 4 s @ 250 Hz = 1000 samples)
@@ -218,7 +218,7 @@ def main():
     # model = TA_CSPNN(nb_classes=len(ACTIONS), Timesamples=250, Channels=len(train_X[0]),
     #                timeKernelLen=50, dropOut=0.3, Ft=11, Fs=6)
 
-    model = EEGNet(nb_classes=len(ACTIONS))
+    model = EEGNet(nb_classes=len(ACTIONS), Chans=2, Samples=250)
     model.summary()
     model.compile(loss='categorical_crossentropy',
                   optimizer='nadam',

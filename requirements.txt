@@ -6,3 +6,5 @@ scipy
 PyQt5
 pyqtgraph
 pygame
+pyriemann
+poi
