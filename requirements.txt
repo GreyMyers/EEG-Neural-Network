@@ -8,3 +8,5 @@ pyqtgraph
 pygame
 pyriemann
 poi
+pydot
+graphviz pydot

@@ -1,3 +1,8 @@
 venv
 src/__pycache__/
 motor_imagery_dataset
+training_data
+test_data
+validation_data
+models
+pictures

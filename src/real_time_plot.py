@@ -74,7 +74,7 @@ def acquire_signals():
 
 
 def compute_signals():
-    MODEL_NAME = "models/80.83-140epoch-1601830818-loss-0.51.model"
+    MODEL_NAME = "models/80.0-46epoch-1759230871-loss-0.63.keras"  # put here the name of your model
     model = keras.models.load_model(MODEL_NAME)
     count_down = 100  # restarts the GUI when reaches 0
     EMA = [-1, -1, -1]  # exponential moving average over the probabilities of the model

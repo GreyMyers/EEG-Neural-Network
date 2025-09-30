@@ -27,19 +27,6 @@ import time
 print(tf.__version__)
 print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
 
-def pad_or_trim(trial: np.ndarray, fixed_len: int = 1000) -> np.ndarray:
-    """
-    Ensure each trial has shape (channels, fixed_len).
-    Pads with zeros or trims on the right as needed.
-    """
-    # trial expected shape: (C, N)
-    n = trial.shape[1]
-    if n > fixed_len:
-        return trial[:, :fixed_len]
-    if n < fixed_len:
-        pad = np.zeros((trial.shape[0], fixed_len - n), dtype=trial.dtype)
-        return np.hstack([trial, pad])
-    return trial
 
 def fit_and_save(model, epochs, train_X, train_y, validation_X, validation_y, batch_size):
     # fits the network epoch by epoch and saves only accurate models
@@ -58,7 +45,9 @@ def fit_and_save(model, epochs, train_X, train_y, validation_X, validation_y, ba
         val_acc.append(history.history["val_accuracy"][-1])
         val_loss.append(history.history["val_loss"][-1])
 
-        MODEL_NAME = f"models/{round(val_acc[-1] * 100, 2)}-{epoch}epoch-{int(time.time())}-loss-{round(val_loss[-1], 2)}.model"
+        MODEL_NAME = f"models/{round(val_acc[-1] * 100, 2)}-" \
+             f"{epoch}epoch-{int(time.time())}-loss-{round(val_loss[-1], 2)}.keras"
+
 
         if round(val_acc[-1] * 100, 4) >= 77 and round(train_acc[-1] * 100, 4) >= 77:
             # saving & plotting only relevant models
@@ -155,7 +144,7 @@ def check_other_classifiers(train_X, train_y, test_X, test_y):
     mdm.fit(cov_data_train, train_y)
 
     fig, axes = plt.subplots(1, 2)
-    ch_names = [ch for ch in range(8)]
+    ch_names = [ch for ch in range(train_X.shape[1])]
 
     df = pd.DataFrame(data=mdm.covmeans_[0], index=ch_names, columns=ch_names)
     g = sns.heatmap(
@@ -181,14 +170,8 @@ def main():
     split_data(shuffle=True, splitting_percentage=(70, 20, 10), division_factor=0, coupling=False)
 
     # loading personal_dataset
-    tmp_train_X, train_y = load_data(starting_dir=r"C:\Users\greym\Xavier\motor_imagery_dataset", shuffle=True, balance=True)
-    tmp_validation_X, validation_y = load_data(starting_dir=r"C:\Users\greym\Xavier\motor_imagery_dataset", shuffle=True, balance=True)
-
-
-    # Normalize all trials to fixed length (e.g., 4 s @ 250 Hz = 1000 samples)
-    FIXED_LEN = 1000
-    tmp_train_X = np.array([pad_or_trim(tr, FIXED_LEN) for tr in tmp_train_X])
-    tmp_validation_X = np.array([pad_or_trim(tr, FIXED_LEN) for tr in tmp_validation_X])
+    tmp_train_X, train_y = load_data(starting_dir="motor_imagery_dataset", shuffle=True, balance=True)
+    tmp_validation_X, validation_y = load_data(starting_dir="motor_imagery_dataset", shuffle=True, balance=True)
 
     # cleaning the raw personal_dataset
     train_X, fft_train_X = preprocess_raw_eeg(tmp_train_X, lowcut=7, highcut=45, coi3order=0)
@@ -226,8 +209,8 @@ def main():
 
     keras.utils.plot_model(model, "pictures/net.png", show_shapes=True)
 
-    batch_size = 32
-    epochs = 40
+    batch_size = 8
+    epochs = 500
 
     # kfold_cross_val(model, train_X, train_y, epochs, num_folds=10, batch_size=batch_size)
     fit_and_save(model, epochs, train_X, train_y, validation_X, validation_y, batch_size)

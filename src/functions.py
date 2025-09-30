@@ -2,7 +2,7 @@ from brainflow import DataFilter, FilterTypes, AggOperations
 from scipy.signal import butter, lfilter
 from matplotlib import pyplot as plt
 from scipy.fft import fft
-
+from scipy.signal import iirnotch, filtfilt
 import numpy as np
 import os
 import pkg_resources
@@ -224,42 +224,71 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
     y = lfilter(b, a, data)
     return y
 
-def preprocess_raw_eeg(data, fs=250, lowcut=2.0, highcut=65.0, MAX_FREQ=60, power_hz=60, coi3order=3):
+def notch_filter_scipy(signal, fs=250, freq=60.0, Q=30.0):
+    """Fallback notch filter using SciPy if BrainFlow fails."""
+    b, a = iirnotch(freq, Q, fs)
+    return filtfilt(b, a, signal)
+
+def preprocess_raw_eeg(data, fs=250, lowcut=2.0, highcut=65.0,
+                       MAX_FREQ=60, power_hz=60, coi3order=3):
     """
-        Processes raw EEG data for model input, filters 60Hz noise from electroncis in US.
-        :param data: ndarray, input dataset in to filter with shape=(samples, channels, values)
-        :param fs: int, sampling rate
-        :param lowcut: float, lower extreme for the bandpass filter
-        :param highcut: float, higher extreme for the bandpass filter
-        :param MAX_FREQ: int, maximum frequency for the FFTs
-        :return: tuple, (ndarray, ndarray), process personal_dataset and FFTs respectively
+    Processes raw EEG data for model input:
+    - Standardize per channel
+    - 60 Hz notch filter (BrainFlow if possible, SciPy fallback)
+    - Bandpass filter (2–65 Hz by default)
+    - Optional wavelet denoising
+    - Compute FFTs
+
+    :param data: ndarray, shape = (samples, channels, values)
+    :param fs: sampling rate (Hz)
+    :param lowcut: low cutoff for bandpass
+    :param highcut: high cutoff for bandpass
+    :param MAX_FREQ: number of FFT bins to keep
+    :param power_hz: powerline noise frequency (60 Hz in US, 50 in EU)
+    :param coi3order: wavelet denoising order (0 to disable)
+    :return: tuple (filtered_data, fft_data)
     """
 
-    data = standardize(data)
+    data = standardize(data)  # normalize each channel
 
-    fft_data = np.zeros((len(data), len(data[0]), MAX_FREQ))
+    n_samples, n_chans, n_points = data.shape
+    fft_data = np.zeros((n_samples, n_chans, MAX_FREQ))
 
-    for sample in range(len(data)):
-        for channel in range(len(data[0])):
-            # bandpass filter
-            DataFilter.perform_bandstop(data[sample][channel], 250, power_hz, 2.0, 5, FilterTypes.BUTTERWORTH.value, 0)
+    for sample in range(n_samples):
+        for channel in range(n_chans):
+            # Ensure numpy float64 array
+            signal = np.array(data[sample][channel], dtype=np.float64)
 
-            data[sample][channel] = butter_bandpass_filter(data[sample][channel], 2, 120, fs, order=5)
+            # --- Notch filter (BrainFlow first, fallback to SciPy) ---
+            try:
+                DataFilter.perform_bandstop(
+                    signal,
+                    fs,
+                    power_hz,          # center frequency
+                    2.0,               # bandwidth (Hz)
+                    2,                 # order (2–3 is stable for 250 samples)
+                    FilterTypes.BUTTERWORTH.value,
+                    0
+                )
+            except Exception as e:
+                print(f"[WARN] BrainFlow notch failed on sample {sample}, ch {channel}: {e}")
+                signal = notch_filter_scipy(signal, fs=fs, freq=power_hz)
+
+            # --- Bandpass filtering (broad 2–120 Hz before denoise, then tighter 2–65 Hz) ---
+            signal = butter_bandpass_filter(signal, 2, 120, fs, order=5)
 
             if coi3order != 0:
-                DataFilter.perform_wavelet_denoising(data[sample][channel], 'coif3', coi3order)
+                try:
+                    DataFilter.perform_wavelet_denoising(signal, 'coif3', coi3order)
+                except Exception as e:
+                    print(f"[WARN] Wavelet denoising failed: {e}")
 
-            data[sample][channel] = butter_bandpass_filter(data[sample][channel], lowcut, highcut, fs, order=5)
+            signal = butter_bandpass_filter(signal, lowcut, highcut, fs, order=5)
 
-            fft_data[sample][channel] = np.abs(fft(data[sample][channel])[:MAX_FREQ])
+            # Save filtered signal
+            data[sample][channel] = signal
 
-            visualize_data(data,
-                   file_name="pictures/after_bandpass",
-                   title=f'After bandpass from {lowcut}Hz to {highcut}Hz',
-                   length=len(data[0, 0]))
-            # visualize_data(fft_data,
-            #               file_name="pictures/ffts",
-            #               title="FFTs",
-            #               length=len(fft_data[0, 0]))
+            # --- FFT ---
+            fft_data[sample][channel] = np.abs(fft(signal)[:MAX_FREQ])
 
-        return np.array(data), np.array(fft_data)
+    return np.array(data), np.array(fft_data)
