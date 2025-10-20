@@ -28,49 +28,67 @@ print(tf.__version__)
 print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
 
 
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+
 def fit_and_save(model, epochs, train_X, train_y, validation_X, validation_y, batch_size):
-    # fits the network epoch by epoch and saves only accurate models
+    """
+    Train the EEG model with early stopping and automatic checkpoint saving.
+    """
 
-    train_loss = []
-    train_acc = []
-    val_loss = []
-    val_acc = []
+    # --- Callbacks ---
+    early_stop = EarlyStopping(
+        monitor='val_loss',
+        patience=20,
+        restore_best_weights=True,
+        verbose=1
+    )
 
-    for epoch in range(epochs):
-        history = model.fit(train_X, train_y, epochs=1, batch_size=batch_size,
-                            validation_data=(validation_X, validation_y))
+    checkpoint = ModelCheckpoint(
+        filepath='models/best_model.keras',
+        monitor='val_accuracy',
+        save_best_only=True,
+        mode='max',
+        verbose=1
+    )
 
-        train_acc.append(history.history["accuracy"][-1])
-        train_loss.append(history.history["loss"][-1])
-        val_acc.append(history.history["val_accuracy"][-1])
-        val_loss.append(history.history["val_loss"][-1])
+    # --- Compile model ---
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=keras.optimizers.Adam(learning_rate=1e-3),
+        metrics=['accuracy']
+    )
 
-        MODEL_NAME = f"models/{round(val_acc[-1] * 100, 2)}-" \
-             f"{epoch}epoch-{int(time.time())}-loss-{round(val_loss[-1], 2)}.keras"
+    # --- Fit the model ---
+    history = model.fit(
+        train_X, train_y,
+        epochs=epochs,
+        batch_size=batch_size,
+        validation_data=(validation_X, validation_y),
+        callbacks=[early_stop, checkpoint],
+        verbose=1
+    )
 
+    # --- Plot accuracy and loss curves ---
+    plt.figure(figsize=(10,4))
+    plt.subplot(1,2,1)
+    plt.plot(history.history['accuracy'], label='Train Acc')
+    plt.plot(history.history['val_accuracy'], label='Val Acc')
+    plt.title('Model Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
 
-        if round(val_acc[-1] * 100, 4) >= 77 and round(train_acc[-1] * 100, 4) >= 77:
-            # saving & plotting only relevant models
-            model.save(MODEL_NAME)
-            print("saved: ", MODEL_NAME)
+    plt.subplot(1,2,2)
+    plt.plot(history.history['loss'], label='Train Loss')
+    plt.plot(history.history['val_loss'], label='Val Loss')
+    plt.title('Model Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
-            # Accuracy
-            plt.plot(np.arange(len(val_acc)), val_acc)
-            plt.plot(np.arange(len(train_acc)), train_acc)
-            plt.title('Model Accuracy')
-            plt.ylabel('accuracy')
-            plt.xlabel('epoch')
-            plt.legend(['val', 'train'], loc='upper left')
-            plt.show()
-
-            # Loss
-            plt.plot(np.arange(len(val_loss)), val_loss)
-            plt.plot(np.arange(len(train_loss)), train_loss)
-            plt.title('Model Loss')
-            plt.ylabel('Loss')
-            plt.xlabel('epoch')
-            plt.legend(['val', 'train'], loc='upper left')
-            plt.show()
+    print("\n Training complete. Best model saved to models/best_model.keras")
 
 
 def kfold_cross_val(model, train_X, train_y, epochs, num_folds, batch_size):
@@ -166,54 +184,135 @@ def check_other_classifiers(train_X, train_y, test_X, test_y):
     plt.show()
 
 
+from functions import split_data, load_data, preprocess_raw_eeg
+from neural_nets import EEGNet
+from tensorflow import keras
+import numpy as np
+import os
+import time
+from matplotlib import pyplot as plt
+
+# -------------------------------------------------------
+# Train and save two EEG models: motor and frontal
+# -------------------------------------------------------
+
+def train_region(region_name, dataset_dir, chans, labels, model_path, epochs=300, batch_size=32):
+    """
+    Train an EEGNet model for a specific brain region.
+    """
+    print(f"\n============================")
+    print(f"Training {region_name.upper()} Model")
+    print(f"============================")
+
+    # --- Dynamically update ACTIONS for this region ---
+    from functions import ACTIONS
+    ACTIONS.clear()
+    ACTIONS.extend(labels)
+    print(f"Using ACTIONS: {ACTIONS}")
+
+    # Ensure output directories exist
+    os.makedirs("models", exist_ok=True)
+    os.makedirs("pictures", exist_ok=True)
+
+    # --- Split data (train/val/test) ---
+    split_data(starting_dir=dataset_dir, shuffle=True, splitting_percentage=(70, 20, 10))
+
+    # --- Load data ---
+    tmp_train_X, train_y = load_data(starting_dir=dataset_dir, shuffle=True, balance=True)
+    tmp_validation_X, validation_y = load_data(starting_dir="validation_data", shuffle=True, balance=True)
+
+
+
+    print("DEBUG tmp_train_X type:", type(tmp_train_X))
+    print("DEBUG tmp_train_X shape:", np.array(tmp_train_X).shape)
+    print("DEBUG example element shape:", np.array(tmp_train_X[0]).shape)
+
+    # --- Preprocess raw EEG ---
+    train_X, _ = preprocess_raw_eeg(tmp_train_X, lowcut=7, highcut=45, coi3order=0)
+    validation_X, _ = preprocess_raw_eeg(tmp_validation_X, lowcut=7, highcut=45, coi3order=0)
+
+    # --- Reshape for Conv2D input ---
+    train_X = train_X.reshape((len(train_X), chans, train_X.shape[2], 1))
+    validation_X = validation_X.reshape((len(validation_X), chans, validation_X.shape[2], 1))
+
+    # --- Build model ---
+    model = EEGNet(nb_classes=len(labels), Chans=chans, Samples=250)
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=keras.optimizers.Adam(learning_rate=1e-3),
+                  metrics=['accuracy'])
+    model.summary()
+
+    # --- Train with callbacks ---
+    checkpoint = keras.callbacks.ModelCheckpoint(
+        filepath=model_path,
+        monitor='val_accuracy',
+        save_best_only=True,
+        verbose=1,
+        mode='max'
+    )
+    early_stop = keras.callbacks.EarlyStopping(
+        monitor='val_loss',
+        patience=20,
+        restore_best_weights=True,
+        verbose=1
+    )
+
+    history = model.fit(
+        train_X, train_y,
+        validation_data=(validation_X, validation_y),
+        epochs=epochs,
+        batch_size=batch_size,
+        callbacks=[checkpoint, early_stop],
+        verbose=1
+    )
+
+    # --- Plot performance ---
+    plt.figure(figsize=(10,4))
+    plt.subplot(1,2,1)
+    plt.plot(history.history['accuracy'], label='Train Acc')
+    plt.plot(history.history['val_accuracy'], label='Val Acc')
+    plt.title(f'{region_name.capitalize()} Accuracy')
+    plt.legend()
+
+    plt.subplot(1,2,2)
+    plt.plot(history.history['loss'], label='Train Loss')
+    plt.plot(history.history['val_loss'], label='Val Loss')
+    plt.title(f'{region_name.capitalize()} Loss')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.savefig(f"pictures/{region_name}_training_curve.png")
+    plt.close()
+
+    print(f"\n{region_name.capitalize()} model saved to {model_path}\n")
+
+
 def main():
-    split_data(shuffle=True, splitting_percentage=(70, 20, 10), division_factor=0, coupling=False)
-
-    # loading personal_dataset
-    tmp_train_X, train_y = load_data(starting_dir="motor_imagery_dataset", shuffle=True, balance=True)
-    tmp_validation_X, validation_y = load_data(starting_dir="motor_imagery_dataset", shuffle=True, balance=True)
-
-    # cleaning the raw personal_dataset
-    train_X, fft_train_X = preprocess_raw_eeg(tmp_train_X, lowcut=7, highcut=45, coi3order=0)
-    validation_X, fft_validation_X = preprocess_raw_eeg(tmp_validation_X, lowcut=7, highcut=45, coi3order=0)
-
-    # check_other_classifiers(train_X, train_y, validation_X, validation_y)
-
-    # reshaping
-    train_X = train_X.reshape((len(train_X), len(train_X[0]), len(train_X[0, 0]), 1))
-    validation_X = validation_X.reshape((len(validation_X), len(validation_X[0]), len(validation_X[0, 0]), 1))
-
-    # computing absolute value element-wise of the ffts, necessary if crisnet is chosen
-    # fft_train_X = standardize(np.abs(fft_train_X))[:, :, :, np.newaxis]
-    # fft_validation_X = standardize(np.abs(fft_validation_X))[:, :, :, np.newaxis]
-
-    """"
-    Start from here if you want to try ConvLSTM2D as first layers in the networks
-    
-    n_subseq = 10
-    n_timesteps = 25
-    # train_X = train_X.reshape((len(train_X), n_subseq, len(train_X[0]), n_timesteps, 1))
-    # validation_X = validation_X.reshape((len(validation_X), n_subseq, len(validation_X[0]), n_timesteps, 1))
+    """
+    Train two EEGNet models:
+      1. Motor (C3,C4) → left/right
+      2. Frontal (Fp1,Fp2) → forward/stop
     """
 
-    print("train_X shape: ", train_X.shape)
+    # -------- Motor Cortex Model --------
+    train_region(
+        region_name="motor",
+        dataset_dir="datasets/motor",   # path to your motor dataset
+        chans=2,
+        labels=["left", "right"],
+        model_path="models/motor_model.keras",
+        epochs=300
+    )
 
-    # model = TA_CSPNN(nb_classes=len(ACTIONS), Timesamples=250, Channels=len(train_X[0]),
-    #                timeKernelLen=50, dropOut=0.3, Ft=11, Fs=6)
-
-    model = EEGNet(nb_classes=len(ACTIONS), Chans=2, Samples=250)
-    model.summary()
-    model.compile(loss='categorical_crossentropy',
-                  optimizer='nadam',
-                  metrics=['accuracy'])
-
-    keras.utils.plot_model(model, "pictures/net.png", show_shapes=True)
-
-    batch_size = 8
-    epochs = 500
-
-    # kfold_cross_val(model, train_X, train_y, epochs, num_folds=10, batch_size=batch_size)
-    fit_and_save(model, epochs, train_X, train_y, validation_X, validation_y, batch_size)
+    # -------- Frontal Lobe Model --------
+    train_region(
+        region_name="frontal",
+        dataset_dir="datasets/frontal", # path to your frontal dataset
+        chans=2,
+        labels=["forward", "stop"],
+        model_path="models/frontal_model.keras",
+        epochs=300
+    )
 
 
 if __name__ == "__main__":

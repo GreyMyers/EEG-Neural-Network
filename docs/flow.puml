@@ -1,0 +1,67 @@
+@startuml
+title EEG-Based BCI Wheelchair Control System — Block Diagram
+
+skinparam rectangle {
+  BackgroundColor #EEF2FF
+  BorderColor #334488
+  RoundCorner 20
+}
+skinparam node {
+  BackgroundColor #F8FAFF
+  BorderColor #5566AA
+  RoundCorner 15
+}
+skinparam component {
+  BackgroundColor #FFFFFF
+  BorderColor #777777
+}
+skinparam arrow {
+  Thickness 2
+  Color #333388
+}
+
+actor "User (Motor Imagery)" as User
+
+rectangle "EEG Headset" as Headset {
+  component "Electrodes" as Electrodes
+  node "OpenBCI Cyton Controller\n(8-Ch, 250 Hz)" as Cyton
+  component "Wireless / USB Data Link\n(Bluetooth / Serial)" as Comms
+  component "EEG Signal (μV level)" as EEG
+
+  ' Data flow inside the headset
+  Electrodes --> EEG : Brain activity
+  EEG --> Cyton
+  Cyton --> Comms : Stream Raw EEG
+}
+
+rectangle "Processing & Classification\n(PC / Laptop)" as PC {
+  component "BrainFlow API" as Brainflow
+  component "Preprocessing (functions.py)\n• Band-pass 2–65 Hz\n• 60 Hz Notch Filter\n• Wavelet Denoising\n• FFT Extraction" as Preprocess
+  component "Deep Learning Model\n(EEGNet / ResNet)" as Model
+  component "Real-Time GUI (OpenCV)\n(real_time_plot.py)" as GUI
+  component "Serial Link to ESP32" as SerialPC
+
+  Brainflow --> Preprocess
+  Preprocess --> Model : Predict Left / Right
+  Model --> GUI : Visualization
+  Model --> SerialPC : Send Control Signal (L/R)
+}
+
+rectangle "Embedded Interface" as ESP {
+  node "ESP32 Microcontroller" as MCU
+  component "UART Receiver" as UART
+  component "Motor Driver Interface\n(BTS7960 / H-Bridge)" as MotorIF
+  component "Dual DC Motors / Wheel Assembly" as Motors
+
+  SerialPC --> UART : Command (L / R)
+  UART --> MotorIF : PWM Direction Signals
+  MotorIF --> Motors : Drive Left / Right
+}
+
+' --- Flow Connections ---
+User --> Electrodes : Imagines Hand Movement
+Comms --> Brainflow : Transmit Raw EEG
+GUI --> User : Visual Feedback
+Motors --> User : Physical Movement Feedback
+
+@enduml

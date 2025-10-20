@@ -6,3 +6,5 @@ test_data
 validation_data
 models
 pictures
+bnci_dataset
+datasets
