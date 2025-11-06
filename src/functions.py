@@ -5,13 +5,10 @@ from scipy.fft import fft
 from scipy.signal import iirnotch, filtfilt
 import numpy as np
 import os
+import shutil
 import pkg_resources
 
 ACTIONS = ["left", "right", "forward", "stop"]
-
-import os
-import numpy as np
-import shutil
 
 def split_data(starting_dir="personal_dataset", splitting_percentage=(70, 20, 10), shuffle=True,
                coupling=False, division_factor=0):
@@ -40,7 +37,7 @@ def split_data(starting_dir="personal_dataset", splitting_percentage=(70, 20, 10
 
         data_dir = os.path.join(starting_dir, action)
         if not os.path.exists(data_dir):
-            print(f"⚠️ Warning: missing folder {data_dir}, skipping.")
+            print(f"Warning: missing folder {data_dir}, skipping.")
             continue
 
         # Load all trials for this action
@@ -51,7 +48,7 @@ def split_data(starting_dir="personal_dataset", splitting_percentage=(70, 20, 10
                 all_action_data.append(arr)
 
         if not all_action_data:
-            print(f"⚠️ No data files found for {action} in {data_dir}.")
+            print(f"No data files found for {action} in {data_dir}.")
             continue
 
         # Handle coupling (deprecated for EEG)
@@ -155,34 +152,43 @@ def load_data(starting_dir, shuffle=True, balance=False):
     return np.array(X), np.array(y)
 
 def standardize(data, std_type="channel_wise"):
+    """
+    Normalize EEG data safely to zero mean and unit variance.
+    Prevents NaN propagation if std == 0.
+    """
+
     if std_type == "feature_wise":
         for j in range(len(data[0, 0, :])):
             mean = data[:, :, j].mean()
             std = data[:, :, j].std()
-            for k in range(len(data)):
-                for i in range(len(data[0])):
-                    data[k, i, j] = (data[k, i, j] - mean) / std
+            std = std if std != 0 else 1e-6  # prevent divide by zero
+            data[:, :, j] = (data[:, :, j] - mean) / std
 
-    if std_type == "sample_wise":
+    elif std_type == "sample_wise":
         for k in range(len(data)):
-            mean = data[k].mean()
-            std = data[k].std()
-            data[k] -= mean
-            data[k] /= std
+            mean = np.mean(data[k])
+            std = np.std(data[k])
+            std = std if std != 0 else 1e-6
+            data[k] = (data[k] - mean) / std
 
-    if std_type == "channel_wise":
-        # this type of standardization prevents some channels to have more importance over others,
-        # i.e. back head channels have more uVrms because of muscle tension in the back of the head
-        # this way we prevent the network from concentrating too much on those features
+    elif std_type == "channel_wise":
         for k in range(len(data)):
-            sample = data[k]
-            for i in range(len(sample)):
-                mean = sample[i].mean()
-                std = sample[i].std()
-                for j in range(len(sample[0])):
-                    data[k, i, j] = (sample[i, j] - mean) / std
-    
-    return data
+            sample = np.array(data[k])
+            for i in range(sample.shape[0]):  # each channel
+                mean = np.mean(sample[i])
+                std = np.std(sample[i])
+                if np.isnan(mean) or np.isnan(std):
+                    sample[i] = np.zeros_like(sample[i])
+                else:
+                    # clamp near-zero variance channels to zero to avoid blow-ups
+                    if std < 1e-3:
+                        sample[i] = np.zeros_like(sample[i])
+                    else:
+                        sample[i] = (sample[i] - mean) / std
+
+            data[k] = sample
+
+    return np.nan_to_num(data)
 
 def visualize_data(data, file_name, title, length):
     # takes a look at the personal_dataset
@@ -217,8 +223,8 @@ def preprocess_raw_eeg(data, fs=250, lowcut=2.0, highcut=65.0,
     Processes raw EEG data for model input:
       • Standardize per channel
       • 60-Hz notch filter (SciPy implementation)
-      • Broad 2–120 Hz bandpass, optional wavelet denoising
-      • Tight 2–65 Hz bandpass
+      • Broad 2-120 Hz bandpass, optional wavelet denoising
+      • Tight 2-65 Hz bandpass
       • Compute FFTs (first MAX_FREQ bins)
 
     :param data: ndarray, shape = (samples, channels, values)

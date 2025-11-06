@@ -1,34 +1,19 @@
-# huge thanks to @Sentdex for the inspiration:
-# https://github.com/Sentdex/BCI
-# also check out his version
-
-# additionally check out how it should be done with CSP and LDA also:
-# https://mne.tools/dev/auto_examples/decoding/plot_decoding_csp_eeg.html
-# another python implementation of CSP can be found here:
-# https://github.com/spolsley/common-spatial-patterns
-
-# Script to train the model
-
-
-from sklearn.model_selection import KFold
-from functions import split_data, standardize, load_data, preprocess_raw_eeg, ACTIONS
-from neural_nets import cris_net, res_net, TA_CSPNN, EEGNet
-
-from sklearn.model_selection import KFold, cross_val_score
-from matplotlib import pyplot as plt
-
-from tensorflow import keras
-import tensorflow as tf
-import numpy as np
+import os
+import argparse
 import time
+import numpy as np
+import tensorflow as tf
+from matplotlib import pyplot as plt
+from sklearn.model_selection import KFold, cross_val_score
+from tensorflow import keras
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from functions import split_data, load_data, preprocess_raw_eeg, ACTIONS
+from neural_nets import EEGNet
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1" # shuts down GPU
 
 print(tf.__version__)
 print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
-
-
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 
 def fit_and_save(model, epochs, train_X, train_y, validation_X, validation_y, batch_size):
     """
@@ -184,19 +169,11 @@ def check_other_classifiers(train_X, train_y, test_X, test_y):
     plt.show()
 
 
-from functions import split_data, load_data, preprocess_raw_eeg
-from neural_nets import EEGNet
-from tensorflow import keras
-import numpy as np
-import os
-import time
-from matplotlib import pyplot as plt
-
 # -------------------------------------------------------
 # Train and save two EEG models: motor and frontal
 # -------------------------------------------------------
 
-def train_region(region_name, dataset_dir, chans, labels, model_path, epochs=300, batch_size=32):
+def train_region(region_name, dataset_dir, chans, labels, model_path, epochs=300, batch_size=8):
     """
     Train an EEGNet model for a specific brain region.
     """
@@ -227,9 +204,14 @@ def train_region(region_name, dataset_dir, chans, labels, model_path, epochs=300
     print("DEBUG tmp_train_X shape:", np.array(tmp_train_X).shape)
     print("DEBUG example element shape:", np.array(tmp_train_X[0]).shape)
 
-    # --- Preprocess raw EEG ---
-    train_X, _ = preprocess_raw_eeg(tmp_train_X, lowcut=7, highcut=45, coi3order=0)
-    validation_X, _ = preprocess_raw_eeg(tmp_validation_X, lowcut=7, highcut=45, coi3order=0)
+    # --- Preprocess raw EEG with task-specific bandpass ---
+    if region_name.lower() == "motor":
+        lowcut, highcut = 8, 30
+    else:
+        lowcut, highcut = 4, 30
+
+    train_X, _ = preprocess_raw_eeg(tmp_train_X, lowcut=lowcut, highcut=highcut, coi3order=0)
+    validation_X, _ = preprocess_raw_eeg(tmp_validation_X, lowcut=lowcut, highcut=highcut, coi3order=0)
 
     # --- Reshape for Conv2D input ---
     train_X = train_X.reshape((len(train_X), chans, train_X.shape[2], 1))
@@ -294,23 +276,43 @@ def main():
       2. Frontal (Fp1,Fp2) → forward/stop
     """
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--user-name', type=str, default='default', help='User name to scope datasets and model outputs')
+    args = parser.parse_args()
+    name = args.user_name
+
+    # Prefer datasets under datasets/<name>/ if present; otherwise fallback to defaults
+    named_root = os.path.join("datasets", name)
+    if os.path.isdir(os.path.join(named_root, 'motor')) and os.path.isdir(os.path.join(named_root, 'frontal')):
+        MOTOR_DIR = os.path.join(named_root, "motor")
+        FRONTAL_DIR = os.path.join(named_root, "frontal")
+        print(f"[DATA] Using per-user datasets at {named_root}")
+    else:
+        MOTOR_DIR = os.path.join("datasets", "motor")
+        FRONTAL_DIR = os.path.join("datasets", "frontal")
+        print(f"[DATA] Using default datasets at datasets/motor and datasets/frontal")
+
+    # User-specific model output directory
+    user_models_dir = os.path.join("models", name)
+    os.makedirs(user_models_dir, exist_ok=True)
+
     # -------- Motor Cortex Model --------
     train_region(
         region_name="motor",
-        dataset_dir="datasets/motor",   # path to your motor dataset
+        dataset_dir=MOTOR_DIR,
         chans=2,
         labels=["left", "right"],
-        model_path="models/motor_model.keras",
+        model_path=os.path.join(user_models_dir, "motor_model.keras"),
         epochs=300
     )
 
     # -------- Frontal Lobe Model --------
     train_region(
         region_name="frontal",
-        dataset_dir="datasets/frontal", # path to your frontal dataset
+        dataset_dir=FRONTAL_DIR,
         chans=2,
         labels=["forward", "stop"],
-        model_path="models/frontal_model.keras",
+        model_path=os.path.join(user_models_dir, "frontal_model.keras"),
         epochs=300
     )
 

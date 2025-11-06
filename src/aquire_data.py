@@ -10,8 +10,6 @@ NUM_TRIALS = 20           # trials per class
 
 # Folder structure that matches train.py
 DATASET_ROOT = r"C:\Users\greym\Xavier\datasets"
-MOTOR_DIR = os.path.join(DATASET_ROOT, "motor")
-FRONTAL_DIR = os.path.join(DATASET_ROOT, "frontal")
 
 def save_trial(data, region, label):
     """Save one trial of EEG data in the proper region folder."""
@@ -37,7 +35,7 @@ def preprocess_trial(raw_data, region):
         raise ValueError("region must be 'motor' or 'frontal'")
 
     trial_data = np.array([raw_data[ch] for ch in CHANNELS])
-    desired_len = 250  # samples per trial
+    desired_len = SAMPLES_PER_SEC  # samples per trial
 
     # Trim or pad
     if trial_data.shape[1] > desired_len:
@@ -54,6 +52,11 @@ if __name__ == "__main__":
     board = BoardShim(BoardIds.CYTON_BOARD.value, params)
     board.prepare_session()
     board.start_stream()
+
+    name = input("Enter patient name: ")
+    DATASET_ROOT = os.path.join(DATASET_ROOT, name)
+    MOTOR_DIR = os.path.join(DATASET_ROOT, "motor")
+    FRONTAL_DIR = os.path.join(DATASET_ROOT, "frontal")
 
     print("Get ready for EEG data collection...")
     time.sleep(2)

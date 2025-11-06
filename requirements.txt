@@ -9,4 +9,8 @@ pygame
 pyriemann
 poi
 pydot
-graphviz pydot
+graphviz
+pyedflib
+matplotlib
+seaborn
+scikit-learn

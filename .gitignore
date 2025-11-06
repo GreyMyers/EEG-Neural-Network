@@ -8,3 +8,10 @@ models
 pictures
 bnci_dataset
 datasets
+validation_data_frontal
+training_data_frontal
+test_data_frontal
+test_data_motor
+training_data_motor
+validation_data_motor
+physionet_data
