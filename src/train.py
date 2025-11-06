@@ -225,18 +225,19 @@ def train_region(region_name, dataset_dir, chans, labels, model_path, epochs=300
     model.summary()
 
     # --- Train with callbacks ---
+    # Extract directory and base filename from model_path
+    model_dir = os.path.dirname(model_path)
+    model_basename = os.path.basename(model_path)
+    model_name_without_ext = os.path.splitext(model_basename)[0]
+    model_ext = os.path.splitext(model_basename)[1]
+    
+    # Save all models with epoch numbers
     checkpoint = keras.callbacks.ModelCheckpoint(
-        filepath=model_path,
+        filepath=os.path.join(model_dir, f"{model_name_without_ext}_epoch{{epoch:03d}}{model_ext}"),
         monitor='val_accuracy',
-        save_best_only=True,
+        save_best_only=False,  # Save all models
         verbose=1,
         mode='max'
-    )
-    early_stop = keras.callbacks.EarlyStopping(
-        monitor='val_loss',
-        patience=20,
-        restore_best_weights=True,
-        verbose=1
     )
 
     history = model.fit(
@@ -244,7 +245,7 @@ def train_region(region_name, dataset_dir, chans, labels, model_path, epochs=300
         validation_data=(validation_X, validation_y),
         epochs=epochs,
         batch_size=batch_size,
-        callbacks=[checkpoint, early_stop],
+        callbacks=[checkpoint],  # Removed early_stop callback
         verbose=1
     )
 
