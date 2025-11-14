@@ -31,7 +31,7 @@ def res_net():
         x = Activation("relu")(x)
         return x
 
-    inp = Input(shape=(2, 250, 1))
+    inp = tf.tensorflow.keras.Input(shape=(8, 90, 1))
     x = Conv2D(16, (3, 3), strides=stride, padding="same")(inp)
     x = BatchNormalization(axis=CHANNEL_AXIS)(x)
     x = Activation("relu")(x)
@@ -79,7 +79,7 @@ def cris_net(input_shape):
     return model
 
 
-def TA_CSPNN(nb_classes, Channels=2, Timesamples=250,
+def TA_CSPNN(nb_classes, Channels=8, Timesamples=250,
              dropOut=0.25, timeKernelLen=50, Ft=11, Fs=6):
     """
     Temporally Adaptive Common Spatial Patterns with Deep Convolutional Neural Networks (TA-CSPNN)

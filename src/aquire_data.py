@@ -1,100 +1,60 @@
 from brainflow import BoardShim, BrainFlowInputParams, BoardIds
 import numpy as np
-import time
-import os
+import time, os
 
-# Settings
-TRIAL_DURATION = 4        # seconds per trial
-SAMPLES_PER_SEC = 250     # Cyton default
-NUM_TRIALS = 20           # trials per class
-
-# Folder structure that matches train.py
+TRIAL_DURATION = 1
+SAMPLES_PER_SEC = 250
+NUM_TRIALS = 100
 DATASET_ROOT = r"C:\Users\greym\Xavier\datasets"
 
-def save_trial(data, region, label):
-    """Save one trial of EEG data in the proper region folder."""
-    if region == "motor":
-        label_dir = os.path.join(MOTOR_DIR, label)
-    elif region == "frontal":
-        label_dir = os.path.join(FRONTAL_DIR, label)
-    else:
-        raise ValueError("region must be 'motor' or 'frontal'")
-
-    os.makedirs(label_dir, exist_ok=True)
-    filename = os.path.join(label_dir, f"{int(time.time()*1000)}.npy")
+def save_trial(data, label, region_dir):
+    os.makedirs(os.path.join(region_dir, label), exist_ok=True)
+    filename = os.path.join(region_dir, label, f"{int(time.time()*1000)}.npy")
     np.save(filename, data)
     print(f"Saved {data.shape} samples to {filename}")
 
-def preprocess_trial(raw_data, region):
-    """Select only relevant channels for region and resize/pad to (2, 250)."""
-    if region == "motor":
-        CHANNELS = [1, 2]  # C3, C4
-    elif region == "frontal":
-        CHANNELS = [3, 4]  # Fp1, Fp2
-    else:
-        raise ValueError("region must be 'motor' or 'frontal'")
-
-    trial_data = np.array([raw_data[ch] for ch in CHANNELS])
-    desired_len = SAMPLES_PER_SEC  # samples per trial
-
-    # Trim or pad
-    if trial_data.shape[1] > desired_len:
-        trial_data = trial_data[:, :desired_len]
-    elif trial_data.shape[1] < desired_len:
-        pad_width = desired_len - trial_data.shape[1]
-        trial_data = np.pad(trial_data, ((0, 0), (0, pad_width)), mode="constant")
-
-    return trial_data
-
 if __name__ == "__main__":
     params = BrainFlowInputParams()
-    params.serial_port = "COM3"  # adjust for your system
+    params.serial_port = "COM3"  # Adjust as needed
     board = BoardShim(BoardIds.CYTON_BOARD.value, params)
     board.prepare_session()
     board.start_stream()
 
-    name = input("Enter patient name: ")
-    DATASET_ROOT = os.path.join(DATASET_ROOT, name)
-    MOTOR_DIR = os.path.join(DATASET_ROOT, "motor")
-    FRONTAL_DIR = os.path.join(DATASET_ROOT, "frontal")
+    try:
+        name = input("Enter patient name: ")
+        root_dir = os.path.join(DATASET_ROOT, name)
+        motor_dir = os.path.join(root_dir, "motor")
 
-    print("Get ready for EEG data collection...")
-    time.sleep(2)
+        # Collects all channels
+        # eeg_channels = BoardShim.get_eeg_channels(BoardIds.CYTON_BOARD.value)
+        
+        # Selected all 8 channels
+        selected_channels = BoardShim.get_eeg_channels(BoardIds.CYTON_BOARD.value)
+        
+        motor_labels = ["left", "right"]
+        print("Get ready for EEG data collection...")
 
-    # --- Motor cortex (C3, C4) ---
-    region = "motor"
-    motor_labels = ["left", "right"]
-    for label in motor_labels:
-        print(f"\n--- Starting {NUM_TRIALS} {label.upper()} trials ({region}) ---")
-        for t in range(NUM_TRIALS):
-            input(f"Press Enter to start trial {t+1}/{NUM_TRIALS} ({label})")
-            print(f"Imagine moving your {label} hand for {TRIAL_DURATION} seconds...")
-            time.sleep(1)
-            board.get_board_data()  # clear old buffer
-            time.sleep(TRIAL_DURATION)
-            raw_data = board.get_board_data()
-            trial_data = preprocess_trial(raw_data, region)
-            save_trial(trial_data, region, label)
+        for label in motor_labels:
+            print(f"\n--- Starting {NUM_TRIALS} {label.upper()} trials ---")
+            for t in range(NUM_TRIALS):
+                # input(f"Press Enter to start trial {t+1}/{NUM_TRIALS} ({label})")
+                print(f"Imagine moving your {label} hand for {TRIAL_DURATION} seconds...")
+                board.get_board_data()  # flush
+                time.sleep(TRIAL_DURATION)
+                eeg_data = board.get_current_board_data(250)[selected_channels, :]
 
-    # --- Frontal lobe (Fp1, Fp2) ---
-    region = "frontal"
-    frontal_labels = ["forward", "stop"]
-    for label in frontal_labels:
-        print(f"\n--- Starting {NUM_TRIALS} {label.upper()} trials ({region}) ---")
-        for t in range(NUM_TRIALS):
-            input(f"Press Enter to start trial {t+1}/{NUM_TRIALS} ({label})")
-            if label == "forward":
-                print("Concentrate or focus for forward command...")
-            else:
-                print("Relax or clear your mind for stop command...")
+                desired = SAMPLES_PER_SEC
+                current = eeg_data.shape[1]
 
-            time.sleep(1)
-            board.get_board_data()
-            time.sleep(TRIAL_DURATION)
-            raw_data = board.get_board_data()
-            trial_data = preprocess_trial(raw_data, region)
-            save_trial(trial_data, region, label)
+                if current > desired:
+                    eeg_data = eeg_data[:, -desired:]  # crop extra
+                elif current < desired:
+                    pad = np.tile(eeg_data[:, -1:], (1, desired - current))
+                    eeg_data = np.concatenate((eeg_data, pad), axis=1)
+                
+                save_trial(eeg_data, label, motor_dir)
 
-    board.stop_stream()
-    board.release_session()
-    print("\nSession finished")
+    finally:
+        board.stop_stream()
+        board.release_session()
+        print("\nSession finished safely.")

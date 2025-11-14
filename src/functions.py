@@ -2,101 +2,123 @@ from brainflow import DataFilter, FilterTypes, AggOperations
 from scipy.signal import butter, lfilter
 from matplotlib import pyplot as plt
 from scipy.fft import fft
-from scipy.signal import iirnotch, filtfilt
+
 import numpy as np
 import os
-import shutil
-import pkg_resources
 
-ACTIONS = ["left", "right", "forward", "stop"]
+ACTIONS = ["left", "right"]
 
-def split_data(starting_dir="personal_dataset", splitting_percentage=(70, 20, 10), shuffle=True,
-               coupling=False, division_factor=0):
+
+def split_data(starting_dir="personal_dataset", splitting_percentage=(70, 20, 10), shuffle=True, coupling=False,
+               division_factor=0):
     """
-    Split EEG dataset into training, validation, and test folders.
-    Overwrites previous splits every time.
-    """
+        This function splits the dataset in three folders, training, validation, test
+        Has to be run just everytime the dataset is changed
 
+    :param starting_dir: string, the directory of the dataset
+    :param splitting_percentage:  tuple, (training_percentage, validation_percentage, test_percentage)
+    :param shuffle: bool, decides if the personal_dataset will be shuffled
+    :param coupling: bool, decides if samples are shuffled singularly or by couples
+    :param division_factor: int, if the personal_dataset used is made of FFTs which are taken from multiple sittings
+                            one sample might be very similar to an adjacent one, so not all the samples
+                            should be considered because some very similar samples could fall both in
+                            validation and training, thus the division_factor divides the personal_dataset.
+                            if division_factor == 0 the function will maintain all the personal_dataset
+
+    """
     training_per, validation_per, test_per = splitting_percentage
 
-    # --- Always start fresh: remove old split folders ---
-    for folder in ["training_data", "validation_data", "test_data"]:
-        if os.path.exists(folder):
-            shutil.rmtree(folder)
+    if not os.path.exists("training_data") and not os.path.exists("validation_data") \
+            and not os.path.exists("test_data"):
 
-    # Create new base split folders
-    os.makedirs("training_data", exist_ok=True)
-    os.makedirs("validation_data", exist_ok=True)
-    os.makedirs("test_data", exist_ok=True)
+        # creating directories
 
-    print(f"SPLIT_DATA(): starting_dir={starting_dir}")
-    print(f"ACTIONS={ACTIONS}")
+        os.mkdir("training_data")
+        os.mkdir("validation_data")
+        os.mkdir("test_data")
 
-    for action in ACTIONS:
-        action_data = []
+        for action in ACTIONS:
 
-        data_dir = os.path.join(starting_dir, action)
-        if not os.path.exists(data_dir):
-            print(f"Warning: missing folder {data_dir}, skipping.")
-            continue
+            action_data = []
+            all_action_data = []
+            # this will contain all the samples relative to the action
 
-        # Load all trials for this action
-        all_action_data = []
-        for file in sorted(os.listdir(data_dir)):
-            if file.endswith(".npy"):
-                arr = np.load(os.path.join(data_dir, file))
-                all_action_data.append(arr)
+            data_dir = os.path.join(starting_dir, action)
+            # sorted will make sure that the personal_dataset is appended in the order of acquisition
+            # since each sample file is saved as "timestamp".npy
+            for file in sorted(os.listdir(data_dir)):
+                # each item is a ndarray of shape (8, 90) that represents ≈1sec of acquisition
+                all_action_data.append(np.load(os.path.join(data_dir, file)))
 
-        if not all_action_data:
-            print(f"No data files found for {action} in {data_dir}.")
-            continue
+            # TODO: make this coupling part readable
+            # coupling was used when overlapping FFTs were used
+            # is now deprecated with EEG models and very time-distant acquisitions
+            if coupling:
+                # coupling near time acquired samples to reduce the probability of having
+                # similar samples in both train and validation sets
+                coupled_actions = []
+                first = True
+                for i in range(len(all_action_data)):
+                    if division_factor != 0:
+                        if i % division_factor == 0:
+                            if first:
+                                tmp_act = all_action_data[i]
+                                first = False
+                            else:
+                                coupled_actions.append([tmp_act, all_action_data[i]])
+                                first = True
+                    else:
+                        if first:
+                            tmp_act = all_action_data[i]
+                            first = False
+                        else:
+                            coupled_actions.append([tmp_act, all_action_data[i]])
+                            first = True
 
-        # Handle coupling (deprecated for EEG)
-        if coupling:
-            coupled_actions = []
-            first = True
-            for i in range(len(all_action_data)):
-                if division_factor != 0 and i % division_factor != 0:
-                    continue
-                if first:
-                    tmp_act = all_action_data[i]
-                    first = False
-                else:
-                    coupled_actions.append([tmp_act, all_action_data[i]])
-                    first = True
-            if shuffle:
-                np.random.shuffle(coupled_actions)
-            for pair in coupled_actions:
-                action_data.extend(pair)
-        else:
-            # Normal (non-coupled) branch
-            if division_factor != 0:
-                action_data = [all_action_data[i] for i in range(0, len(all_action_data), division_factor)]
+                if shuffle:
+                    np.random.shuffle(coupled_actions)
+
+                # reformatting all the samples in a single list
+                for i in range(len(coupled_actions)):
+                    for j in range(len(coupled_actions[i])):
+                        action_data.append(coupled_actions[i][j])
+
             else:
-                action_data = all_action_data.copy()
-            if shuffle:
-                np.random.shuffle(action_data)
+                for i in range(len(all_action_data)):
+                    if division_factor != 0:
+                        if i % division_factor == 0:
+                            action_data.append(all_action_data[i])
+                    else:
+                        action_data = all_action_data
 
-        # --- Split into train/val/test ---
-        num_total = len(action_data)
-        num_train = int(num_total * training_per / 100)
-        num_val = int(num_total * validation_per / 100)
-        num_test = num_total - num_train - num_val
+                if shuffle:
+                    np.random.shuffle(action_data)
 
-        print(f"Splitting '{action}' ({num_total} samples) -> "
-              f"{num_train} train, {num_val} val, {num_test} test")
+            num_training_samples = int(len(action_data) * training_per / 100)
+            num_validation_samples = int(len(action_data) * validation_per / 100)
+            num_test_samples = int(len(action_data) * test_per / 100)
 
-        splits = [
-            ("training_data", range(0, num_train)),
-            ("validation_data", range(num_train, num_train + num_val)),
-            ("test_data", range(num_train + num_val, num_total))
-        ]
+            # creating subdirectories for each action
+            tmp_dir = os.path.join("training_data", action)
+            if not os.path.exists(tmp_dir):
+                os.mkdir(tmp_dir)
+            for sample in range(num_training_samples):
+                np.save(file=os.path.join(tmp_dir, str(sample)), arr=action_data[sample])
 
-        for split_name, idx_range in splits:
-            dst_dir = os.path.join(split_name, action)
-            os.makedirs(dst_dir, exist_ok=True)
-            for idx in idx_range:
-                np.save(os.path.join(dst_dir, f"{idx}.npy"), action_data[idx])
+            tmp_dir = os.path.join("validation_data", action)
+            if not os.path.exists(tmp_dir):
+                os.mkdir(tmp_dir)
+            for sample in range(num_training_samples, num_training_samples + num_validation_samples):
+                np.save(file=os.path.join(tmp_dir, str(sample)), arr=action_data[sample])
+
+            if test_per != 0:
+                tmp_dir = os.path.join("test_data", action)
+                if not os.path.exists(tmp_dir):
+                    os.mkdir(tmp_dir)
+                for sample in range(num_training_samples + num_validation_samples,
+                                    num_training_samples + num_validation_samples + num_test_samples):
+                    np.save(file=os.path.join(tmp_dir, str(sample)), arr=action_data[sample])
+
 
 def load_data(starting_dir, shuffle=True, balance=False):
     """
@@ -151,44 +173,44 @@ def load_data(starting_dir, shuffle=True, balance=False):
 
     return np.array(X), np.array(y)
 
-def standardize(data, std_type="channel_wise"):
-    """
-    Normalize EEG data safely to zero mean and unit variance.
-    Prevents NaN propagation if std == 0.
-    """
 
+def standardize(data, std_type="channel_wise"):
     if std_type == "feature_wise":
         for j in range(len(data[0, 0, :])):
             mean = data[:, :, j].mean()
             std = data[:, :, j].std()
-            std = std if std != 0 else 1e-6  # prevent divide by zero
-            data[:, :, j] = (data[:, :, j] - mean) / std
+            if std < 1e-10:
+                std = 1.0  # Prevent division by zero
+            for k in range(len(data)):
+                for i in range(len(data[0])):
+                    data[k, i, j] = (data[k, i, j] - mean) / std
 
-    elif std_type == "sample_wise":
+    if std_type == "sample_wise":
         for k in range(len(data)):
-            mean = np.mean(data[k])
-            std = np.std(data[k])
-            std = std if std != 0 else 1e-6
-            data[k] = (data[k] - mean) / std
+            mean = data[k].mean()
+            std = data[k].std()
+            if std < 1e-10:
+                std = 1.0  # Prevent division by zero
+            data[k] -= mean
+            data[k] /= std
 
-    elif std_type == "channel_wise":
+    if std_type == "channel_wise":
+        # this type of standardization prevents some channels to have more importance over others,
+        # i.e. back head channels have more uVrms because of muscle tension in the back of the head
+        # this way we prevent the network from concentrating too much on those features
         for k in range(len(data)):
-            sample = np.array(data[k])
-            for i in range(sample.shape[0]):  # each channel
-                mean = np.mean(sample[i])
-                std = np.std(sample[i])
-                if np.isnan(mean) or np.isnan(std):
-                    sample[i] = np.zeros_like(sample[i])
-                else:
-                    # clamp near-zero variance channels to zero to avoid blow-ups
-                    if std < 1e-3:
-                        sample[i] = np.zeros_like(sample[i])
-                    else:
-                        sample[i] = (sample[i] - mean) / std
+            sample = data[k]
+            for i in range(len(sample)):
+                mean = sample[i].mean()
+                std = sample[i].std()
+                # Prevent division by zero for dead channels
+                if std < 1e-10:
+                    std = 1.0  # Set to 1 to avoid NaN (channel should have been removed already)
+                for j in range(len(sample[0])):
+                    data[k, i, j] = (sample[i, j] - mean) / std
 
-            data[k] = sample
+    return data
 
-    return np.nan_to_num(data)
 
 def visualize_data(data, file_name, title, length):
     # takes a look at the personal_dataset
@@ -198,6 +220,7 @@ def visualize_data(data, file_name, title, length):
     plt.title(title)
     plt.savefig(file_name + ".png")
     plt.clf()
+
 
 def butter_bandpass(lowcut, highcut, fs, order=5):
     nyq = 0.5 * fs
@@ -212,72 +235,99 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
     y = lfilter(b, a, data)
     return y
 
-def notch_filter_scipy(signal, fs=250, freq=60.0, Q=30.0):
-    """Fallback notch filter using SciPy if BrainFlow fails."""
-    b, a = iirnotch(freq, Q, fs)
-    return filtfilt(b, a, signal)
 
-def preprocess_raw_eeg(data, fs=250, lowcut=2.0, highcut=65.0,
-                       MAX_FREQ=60, power_hz=60, coi3order=3):
+def preprocess_raw_eeg(data, fs=250, lowcut=2.0, highcut=65.0, MAX_FREQ=60, power_hz=50, coi3order=3):
     """
-    Processes raw EEG data for model input:
-      • Standardize per channel
-      • 60-Hz notch filter (SciPy implementation)
-      • Broad 2-120 Hz bandpass, optional wavelet denoising
-      • Tight 2-65 Hz bandpass
-      • Compute FFTs (first MAX_FREQ bins)
-
-    :param data: ndarray, shape = (samples, channels, values)
-    :param fs: sampling rate (Hz)
-    :param lowcut: low cutoff for final bandpass
-    :param highcut: high cutoff for final bandpass
-    :param MAX_FREQ: number of FFT bins to keep
-    :param power_hz: power-line frequency (60 Hz US / 50 Hz EU)
-    :param coi3order: wavelet denoising order (0 = disabled)
-    :return: tuple (filtered_data, fft_data)
+        Processes raw EEG personal_dataset, filters 50Hz noise from electronics in EU, applies bandpass
+        and wavelet denoising.
+        Change power_hz to 60Hz if you are in the US
+        Check local power line frequency otherwise
+    :param data: ndarray, input dataset in to filter with shape=(samples, channels, values)
+    :param fs: int, sampling rate
+    :param lowcut: float, lower extreme for the bandpass filter
+    :param highcut: float, higher extreme for the bandpass filter
+    :param MAX_FREQ: int, maximum frequency for the FFTs
+    :return: tuple, (ndarray, ndarray), process personal_dataset and FFTs respectively
     """
+    # print(personal_dataset.shape)
+    # visualize_data(data,
+    #               file_name="pictures/before",
+    #               title="RAW EEGs",
+    #               length=len(personal_dataset[0, 0]))
 
-    data = standardize(data)  # normalize each channel
-    n_samples, n_chans, n_points = data.shape
-    fft_data = np.zeros((n_samples, n_chans, MAX_FREQ))
+    data = standardize(data)
 
-    for sample in range(n_samples):
-        for channel in range(n_chans):
-            # Ensure numpy float64 array
-            signal = np.asarray(data[sample][channel], dtype=np.float64)
+    # visualize_data(data,
+    #               file_name="pictures/after_std",
+    #               title="After Standardization",
+    #               length=len(personal_dataset[0, 0]))
 
-            # --- Stable 60-Hz notch (SciPy only) ---
-            try:
-                signal = notch_filter_scipy(signal, fs=fs, freq=power_hz)
-            except Exception as e:
-                print(f"[WARN] SciPy notch filter failed on sample {sample}, ch {channel}: {e}")
-                continue
+    fft_data = np.zeros((len(data), len(data[0]), MAX_FREQ))
 
-            # --- Broad band-pass 2–120 Hz ---
-            try:
-                signal = butter_bandpass_filter(signal, 2, 120, fs, order=5)
-            except Exception as e:
-                print(f"[WARN] Broad bandpass failed on sample {sample}, ch {channel}: {e}")
-                continue
+    for sample in range(len(data)):
+        for channel in range(len(data[0])):
+            # Bandstop filter for power line noise (e.g., 50Hz or 60Hz)
+            # BrainFlow expects start_freq and stop_freq, not center and bandwidth
+            bandwidth = 2.0
+            start_freq = power_hz - bandwidth / 2  # e.g., 49Hz for 50Hz +/- 1Hz
+            stop_freq = power_hz + bandwidth / 2   # e.g., 51Hz for 50Hz +/- 1Hz
+            DataFilter.perform_bandstop(data[sample][channel], 250, start_freq, stop_freq, 5, FilterTypes.BUTTERWORTH.value, 0)
+            data[sample][channel] = butter_bandpass_filter(data[sample][channel], 2, 120, fs, order=5)
 
-            # --- Optional wavelet denoising ---
+            # DataFilter.perform_bandstop(data[sample][channel], 250, 10.0, 1.0, 6, FilterTypes.BUTTERWORTH.value, 0)
             if coi3order != 0:
-                try:
-                    DataFilter.perform_wavelet_denoising(signal, 'coif3', coi3order)
-                except Exception as e:
-                    print(f"[WARN] Wavelet denoising failed: {e}")
+                DataFilter.perform_wavelet_denoising(data[sample][channel], 'coif3', coi3order)
 
-            # --- Final tight band-pass 2–65 Hz ---
-            try:
-                signal = butter_bandpass_filter(signal, lowcut, highcut, fs, order=5)
-            except Exception as e:
-                print(f"[WARN] Final bandpass failed on sample {sample}, ch {channel}: {e}")
-                continue
+            data[sample][channel] = butter_bandpass_filter(data[sample][channel], lowcut, highcut, fs, order=5)
 
-            # Save filtered signal
-            data[sample][channel] = signal
+            # DataFilter.perform_wavelet_denoising(data[sample][channel], 'db6', 3)
+            # DataFilter.perform_rolling_filter(data[sample][channel], 3, AggOperations.MEAN.value)
 
-            # --- FFT ---
-            fft_data[sample][channel] = np.abs(fft(signal)[:MAX_FREQ])
+            fft_data[sample][channel] = np.abs(fft(data[sample][channel])[:MAX_FREQ])
 
-    return data, fft_data
+    fft_data = standardize(fft_data)
+
+    visualize_data(data,
+                   file_name="pictures/after_bandpass",
+                   title=f'After bandpass from {lowcut}Hz to {highcut}Hz',
+                   length=len(data[0, 0]))
+    # visualize_data(fft_data,
+    #               file_name="pictures/ffts",
+    #               title="FFTs",
+    #               length=len(fft_data[0, 0]))
+
+    return np.array(data), np.array(fft_data)
+
+
+def check_duplicate(train_X, test_X):
+    """
+        Checks if there is leaking from the splitting procedure
+    :param train_X: ndarray, the training set
+    :param test_X:  ndarray, the test set
+    :return: bool, True if there is some leaking, False otherwise
+    """
+    # TODO: find a less naive and faster alternative
+    print("Checking duplicated samples split-wise...")
+
+    tmp_train = np.array(train_X)
+    tmp_test = np.array(test_X)
+
+    for i in range(len(tmp_train)):
+        if i % 50 == 0:
+            print("\rComputing: " + str(int(i * 100 / len(tmp_train))) + "%", end='')
+        for j in range(len(tmp_test)):
+            if np.array_equiv(tmp_train[i, 0], tmp_test[j, 0]):
+                print("\nYou're good to go, no duplication in the splits")
+                return True
+    print("\nComputing: 100%")
+    print("You have duplicated personal_dataset in the splits !!!")
+    print("Check the splitting procedure")
+    return False
+
+
+def notch_filter(x=np.linspace(0, 90, 90), mu=50, sig=0.5):
+    # a modified gaussian to filter out electronic noise
+    # change mu to 60 if you are in the US
+    # suggestion: use Brainflow bandstop instead:
+    # https://brainflow.readthedocs.io/en/stable/Examples.html
+    return -(np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))) + 1
