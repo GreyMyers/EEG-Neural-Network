@@ -65,29 +65,6 @@ def fit_and_save(model, epochs, train_X, train_y, validation_X, validation_y, ba
             plt.tight_layout()
             plt.savefig("pictures/motor_training_curves.png", dpi=150)
             plt.show()
-            
-            # Also save individual plots for compatibility
-            # Accuracy
-            plt.figure()
-            plt.plot(np.arange(len(val_acc)), val_acc)
-            plt.plot(np.arange(len(train_acc)), train_acc)
-            plt.title('Model Accuracy')
-            plt.ylabel('accuracy')
-            plt.xlabel('epoch')
-            plt.legend(['val', 'train'], loc='upper left')
-            plt.savefig("pictures/motor_training_accuracy.png")
-            plt.close()
-
-            # Loss
-            plt.figure()
-            plt.plot(np.arange(len(val_loss)), val_loss)
-            plt.plot(np.arange(len(train_loss)), train_loss)
-            plt.title('Model Loss')
-            plt.ylabel('Loss')
-            plt.xlabel('epoch')
-            plt.legend(['val', 'train'], loc='upper left')
-            plt.savefig("pictures/motor_training_loss.png")
-            plt.close()
 
 
 def kfold_cross_val(model, train_X, train_y, epochs, num_folds, batch_size):

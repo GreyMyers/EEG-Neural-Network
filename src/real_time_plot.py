@@ -109,7 +109,7 @@ def compute_signals():
             print(EMA)
             predicted_action = ACTIONS[np.argmax(EMA)]
 
-            if EMA[int(np.argmax(EMA))] > 0.65:
+            if EMA[int(np.argmax(EMA))] > 0.67:
                 if predicted_action == "left":
                     gui.square['x1'] -= gui.MOVE_SPEED
                     gui.square['x2'] -= gui.MOVE_SPEED
