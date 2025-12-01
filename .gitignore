@@ -4,7 +4,7 @@ motor_imagery_dataset
 training_data
 test_data
 validation_data
-models
+# models
 pictures
 bnci_dataset
 datasets

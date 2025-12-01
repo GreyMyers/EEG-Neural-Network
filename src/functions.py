@@ -9,7 +9,7 @@ import os
 ACTIONS = ["left", "right"]
 
 
-def split_data(starting_dir="personal_dataset", splitting_percentage=(70, 20, 10), shuffle=True, coupling=False,
+def split_data(starting_dir="datasets", splitting_percentage=(70, 20, 10), shuffle=True, coupling=False,
                division_factor=0):
     """
         This function splits the dataset in three folders, training, validation, test

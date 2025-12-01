@@ -34,37 +34,37 @@ def fit_and_save(model, epochs, train_X, train_y, validation_X, validation_y, ba
         val_acc.append(history.history["val_accuracy"][-1])
         val_loss.append(history.history["val_loss"][-1])
 
-        MODEL_NAME = f"models/Grey/{round(val_acc[-1] * 100, 2)}-{epoch}epoch-{int(time.time())}-loss-{round(val_loss[-1], 2)}.keras"
+        MODEL_NAME = f"models/grey/{round(val_acc[-1] * 100, 2)}-{epoch}epoch-{int(time.time())}-loss-{round(val_loss[-1], 2)}.keras"
 
         if round(val_acc[-1] * 100, 4) >= 77 and round(train_acc[-1] * 100, 4) >= 77:
-            # saving & plotting only relevant models
+            # saving only relevant models
             model.save(MODEL_NAME)
             print("saved: ", MODEL_NAME)
 
-            # Create combined plot with accuracy and loss
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-            
-            # Accuracy subplot
-            ax1.plot(np.arange(len(val_acc)), val_acc, label='val', linewidth=2)
-            ax1.plot(np.arange(len(train_acc)), train_acc, label='train', linewidth=2)
-            ax1.set_title('Model Accuracy', fontsize=14, fontweight='bold')
-            ax1.set_ylabel('Accuracy', fontsize=12)
-            ax1.set_xlabel('Epoch', fontsize=12)
-            ax1.legend(loc='lower right')
-            ax1.grid(True, alpha=0.3)
-            
-            # Loss subplot
-            ax2.plot(np.arange(len(val_loss)), val_loss, label='val', linewidth=2)
-            ax2.plot(np.arange(len(train_loss)), train_loss, label='train', linewidth=2)
-            ax2.set_title('Model Loss', fontsize=14, fontweight='bold')
-            ax2.set_ylabel('Loss', fontsize=12)
-            ax2.set_xlabel('Epoch', fontsize=12)
-            ax2.legend(loc='upper right')
-            ax2.grid(True, alpha=0.3)
-            
-            plt.tight_layout()
-            plt.savefig("pictures/motor_training_curves.png", dpi=150)
-            plt.show()
+    # Create combined plot with accuracy and loss after training completes
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # Accuracy subplot
+    ax1.plot(np.arange(len(val_acc)), val_acc, label='val', linewidth=2)
+    ax1.plot(np.arange(len(train_acc)), train_acc, label='train', linewidth=2)
+    ax1.set_title('Model Accuracy', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('Accuracy', fontsize=12)
+    ax1.set_xlabel('Epoch', fontsize=12)
+    ax1.legend(loc='lower right')
+    ax1.grid(True, alpha=0.3)
+    
+    # Loss subplot
+    ax2.plot(np.arange(len(val_loss)), val_loss, label='val', linewidth=2)
+    ax2.plot(np.arange(len(train_loss)), train_loss, label='train', linewidth=2)
+    ax2.set_title('Model Loss', fontsize=14, fontweight='bold')
+    ax2.set_ylabel('Loss', fontsize=12)
+    ax2.set_xlabel('Epoch', fontsize=12)
+    ax2.legend(loc='upper right')
+    ax2.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig("pictures/motor_training_curves.png", dpi=150)
+    plt.show()
 
 
 def kfold_cross_val(model, train_X, train_y, epochs, num_folds, batch_size):
@@ -162,8 +162,8 @@ def check_other_classifiers(train_X, train_y, test_X, test_y):
 
 def main():
     # Setup paths for Grey dataset
-    DATASET_DIR = os.path.join("datasets", "Grey", "motor")
-    MODELS_DIR = os.path.join("models", "Grey")
+    DATASET_DIR = os.path.join("datasets", "grey", "motor")
+    MODELS_DIR = os.path.join("models", "grey")
     
     # Create directories
     os.makedirs(MODELS_DIR, exist_ok=True)
@@ -215,7 +215,7 @@ def main():
     keras.utils.plot_model(model, "pictures/net.png", show_shapes=True)
 
     batch_size = 32
-    epochs = 500
+    epochs = 150
 
     # kfold_cross_val(model, train_X, train_y, epochs, num_folds=10, batch_size=batch_size)
     fit_and_save(model, epochs, train_X, train_y, validation_X, validation_y, batch_size)
