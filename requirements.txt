@@ -1,6 +1,6 @@
 brainflow
-numpy
-TensorFlow
+numpy<2.0
+TensorFlow>=2.20.0
 Pandas
 scipy
 PyQt5
@@ -11,9 +11,17 @@ poi
 pydot
 graphviz
 pyedflib
-matplotlib
+matplotlib>=3.10.7
 seaborn
 scikit-learn
 Jupyter
 pyserial
-opencv-python
+opencv-python<4.9
+# Additional dependencies required by TensorFlow 2.20.0
+absl-py>=1.0.0
+flatbuffers>=24.3.25
+h5py>=3.11.0
+keras>=3.10.0
+protobuf>=5.28.0
+tensorboard-data-server>=0.7.0
+requests>=2.31

@@ -7,7 +7,7 @@ SAMPLES_PER_SEC = 250
 NUM_TRIALS = 100
 # For Windows: DATASET_ROOT = r"c:/Users/Gm08348/EEG-Neural-Network/datasets"
 # For Linux: DATASET_ROOT = r"/home/grey/EEG-Neural-Network/datasets"
-DATASET_ROOT = r"/home/grey/EEG-Neural-Network/datasets"
+DATASET_ROOT = r"c:/Users/Gm08348/EEG-Neural-Network/datasets"
 
 def save_trial(data, label, region_dir):
     os.makedirs(os.path.join(region_dir, label), exist_ok=True)
@@ -21,7 +21,7 @@ if __name__ == "__main__":
     # On linux, the serial port is typically /dev/ttyUSB0
     # On windows, the serial port is typically COM3
 
-    params.serial_port = "/dev/ttyUSB0"  # Adjust as needed
+    params.serial_port = "COM4"  # Adjust as needed
     board = BoardShim(BoardIds.CYTON_BOARD.value, params)
     board.prepare_session()
     board.start_stream()

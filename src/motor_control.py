@@ -199,10 +199,7 @@ class MotorController:
             'left': 'A',
             'right': 'D',
             'forward': 'W',
-            'backward': 'S',
             'stop': 'X',
-            'hands': 'W',  # Optional mapping if you have hands/feet actions
-            'feet': 'S'
         }
         
         action_lower = action_name.lower()
@@ -269,5 +266,3 @@ def test_motor_controller():
 
 if __name__ == '__main__':
     test_motor_controller()
-
-

@@ -3,7 +3,6 @@
 
 
 from functions import ACTIONS, preprocess_raw_eeg
-from motor_control import MotorController
 
 from brainflow import BoardShim, BrainFlowInputParams, BoardIds
 from matplotlib import pyplot as plt
@@ -74,81 +73,14 @@ def acquire_signals():
         time.sleep(0.1)
 
 
-def detect_jaw_clench(sample, channel_idx=7, threshold=100, window_variance_threshold=500):
-    """
-    Detect jaw clench from electrode 8 (index 7)
-    
-    Args:
-        sample: EEG data array (8 channels x 250 samples)
-        channel_idx: Channel index for jaw electrode (default 7 for electrode 8)
-        threshold: Amplitude threshold for detection
-        window_variance_threshold: Variance threshold for muscle activity
-    
-    Returns:
-        bool: True if jaw clench detected
-    """
-    if sample is None or len(sample.shape) < 2:
-        return False
-    
-    jaw_channel = sample[channel_idx]
-    
-    # Check for high amplitude (EMG artifact from jaw clench)
-    max_amplitude = np.max(np.abs(jaw_channel))
-    
-    # Check for high variance (muscle activity creates noise)
-    variance = np.var(jaw_channel)
-    
-    # Jaw clench produces high amplitude and high variance
-    is_clenched = (max_amplitude > threshold) or (variance > window_variance_threshold)
-    
-    return is_clenched
-
-
-def compute_signals(use_motor_control=True):
-    global JAW_THRESHOLD_AMP, JAW_THRESHOLD_VAR
-    
-    MODEL_NAME = "models/Grey/85.0-76epoch-1763074954-loss-0.43.keras"
+def compute_signals():
+    MODEL_NAME = "models/grey/80.0-72epoch-1764640193-loss-0.53.keras"
     model = keras.models.load_model(MODEL_NAME)
     count_down = 100  # restarts the GUI when reaches 0
     EMA = [-1, -1]  # exponential moving average over the probabilities of the model (2 classes: left/right)
-    alpha = 0.4  # c ,oefficient for the EMA
+    alpha = 0.4  # coefficient for the EMA
     gui = GraphicalInterface()
     first_run = True
-    
-    # Jaw clench detection parameters (from command line or defaults)
-    try:
-        JAW_AMPLITUDE_THRESHOLD = JAW_THRESHOLD_AMP
-        JAW_VARIANCE_THRESHOLD = JAW_THRESHOLD_VAR
-    except NameError:
-        JAW_AMPLITUDE_THRESHOLD = 100  # μV - default
-        JAW_VARIANCE_THRESHOLD = 500   # default
-    
-    # Initialize motor controller if enabled
-    motor = None
-    if use_motor_control:
-        try:
-            print("\n" + "="*50)
-            print("Initializing Motor Controller...")
-            print("="*50)
-            motor = MotorController(auto_connect=True)
-            if not motor.connected:
-                print("\nMotor controller failed to connect. Running in GUI-only mode.")
-                print("To use motor control, ensure ESP32 is paired via Bluetooth.")
-                motor = None
-            else:
-                print("Motor controller ready!")
-                print("\nControls:")
-                print("  - JAW CLENCH (electrode 8) → Forward")
-                print("  - LEFT motor imagery → Turn Left")
-                print("  - RIGHT motor imagery → Turn Right")
-                print(f"\nJaw Clench Thresholds:")
-                print(f"  - Amplitude: {JAW_AMPLITUDE_THRESHOLD}")
-                print(f"  - Variance: {JAW_VARIANCE_THRESHOLD}")
-                print("="*50)
-        except Exception as e:
-            print(f"Error initializing motor controller: {e}")
-            print("Running in GUI-only mode.")
-            motor = None
 
     while True:
         with mutex:
@@ -166,6 +98,12 @@ def compute_signals(use_motor_control=True):
             nn_input = nn_input.reshape((1, 8, 250, 1))  # 4D Tensor
             nn_out = model.predict(nn_input)[0]  # this is a probability array
 
+            # Check raw prediction confidence - reset EMA if too low
+            raw_confidence = np.max(nn_out)
+            if raw_confidence < 0.80:
+                # Reset EMA when raw confidence is low (headset likely off or no clear signal)
+                EMA = [-1, -1]
+
             # computing exponential moving average
             if EMA[0] == -1:  # if this is the first iteration (base case)
                 for i in range(len(EMA)):
@@ -176,46 +114,18 @@ def compute_signals(use_motor_control=True):
 
             print(EMA)
             predicted_action = ACTIONS[np.argmax(EMA)]
-            
-            # Check for jaw clench first (priority control)
-            jaw_clenched = detect_jaw_clench(shared_vars.sample, 
-                                            channel_idx=7,  # Electrode 8 (0-indexed)
-                                            threshold=JAW_AMPLITUDE_THRESHOLD,
-                                            window_variance_threshold=JAW_VARIANCE_THRESHOLD)
-            
-            if jaw_clenched:
-                # JAW CLENCH DETECTED → MOVE FORWARD
-                gui.square['y1'] -= gui.MOVE_SPEED  # Move up on screen
-                gui.square['y2'] -= gui.MOVE_SPEED
-                
-                if motor:
-                    motor.execute_action("forward", throttled=True)
-                
-                print("JAW CLENCH → FORWARD")
-            
-            elif EMA[int(np.argmax(EMA))] > 0.67:
-                # CONFIDENT LEFT/RIGHT PREDICTION
+
+            # Only move if both raw confidence and EMA confidence are above threshold
+            if raw_confidence > 0.80 and EMA[int(np.argmax(EMA))] > 0.80:
                 if predicted_action == "left":
                     gui.square['x1'] -= gui.MOVE_SPEED
                     gui.square['x2'] -= gui.MOVE_SPEED
-                    
-                    # Send motor command
-                    if motor:
-                        motor.execute_action("left", throttled=True)
 
                 elif predicted_action == "right":
                     gui.square['x1'] += gui.MOVE_SPEED
                     gui.square['x2'] += gui.MOVE_SPEED
-                    
-                    # Send motor command
-                    if motor:
-                        motor.execute_action("right", throttled=True)
 
                 print(predicted_action)
-            else:
-                # Stop motors if no confident signal
-                if motor:
-                    motor.execute_action("stop", throttled=True)
 
             count_down -= 1
 
@@ -236,9 +146,6 @@ def compute_signals(use_motor_control=True):
             shared_vars.key = cv2.waitKey(1) & 0xFF
             if shared_vars.key == ord("q"):
                 cv2.destroyAllWindows()
-                # Disconnect motor controller on exit
-                if motor:
-                    motor.disconnect()
                 break
 
         # time.sleep(0.1)
@@ -247,30 +154,11 @@ def compute_signals(use_motor_control=True):
 #############################################################
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='BCI Motor Control System')
-    parser.add_argument('--serial-port', type=str, help='serial port for OpenBCI',
-                        required=False, default='COM3')
-    parser.add_argument('--motor-control', action='store_true', 
-                        help='enable motor control via Bluetooth (ESP32)')
-    parser.add_argument('--no-motor-control', action='store_true',
-                        help='disable motor control (GUI only)')
-    parser.add_argument('--jaw-threshold', type=float, default=100.0,
-                        help='amplitude threshold for jaw clench detection (default: 100)')
-    parser.add_argument('--jaw-variance', type=float, default=500.0,
-                        help='variance threshold for jaw clench detection (default: 500)')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--serial-port', type=str, help='serial port',
+                        required=False, default='COM4')
 
     args = parser.parse_args()
-    
-    # Store jaw clench thresholds as global variables for compute_signals
-    global JAW_THRESHOLD_AMP, JAW_THRESHOLD_VAR
-    JAW_THRESHOLD_AMP = args.jaw_threshold
-    JAW_THRESHOLD_VAR = args.jaw_variance
-    
-    # Determine motor control setting
-    use_motor = not args.no_motor_control  # Default to True unless explicitly disabled
-    if args.motor_control:
-        use_motor = True
-    
     params = BrainFlowInputParams()
     params.serial_port = args.serial_port
 
@@ -284,7 +172,7 @@ if __name__ == '__main__':
 
     acquisition = threading.Thread(target=acquire_signals)
     acquisition.start()
-    computing = threading.Thread(target=compute_signals, args=(use_motor,))
+    computing = threading.Thread(target=compute_signals)
     computing.start()
 
     acquisition.join()
