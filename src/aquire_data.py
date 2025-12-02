@@ -5,6 +5,8 @@ import time, os
 TRIAL_DURATION = 1
 SAMPLES_PER_SEC = 250
 NUM_TRIALS = 100
+# For Windows: DATASET_ROOT = r"c:/Users/Gm08348/EEG-Neural-Network/datasets"
+# For Linux: DATASET_ROOT = r"/home/grey/EEG-Neural-Network/datasets"
 DATASET_ROOT = r"/home/grey/EEG-Neural-Network/datasets"
 
 def save_trial(data, label, region_dir):
