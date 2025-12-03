@@ -20,7 +20,7 @@ class Shared:
 
 #############################################################
 
-def detect_jaw_clench(sample, channel_idx=7, threshold=100, window_variance_threshold=500):
+def detect_jaw_clench(sample, channel_idx=7, threshold=300, window_variance_threshold=5000):
     """
     Detect jaw clench from electrode 8 (channel index 7)
     Jaw clench produces high amplitude EMG artifact
@@ -156,10 +156,10 @@ if __name__ == '__main__':
                         required=False, default='COM4')
     parser.add_argument('--motor-port', type=str, help='Motor controller COM port (auto-detect if not specified)',
                         required=False, default='COM5')
-    parser.add_argument('--jaw-threshold', type=float, default=100.0,
-                        help='Amplitude threshold for jaw clench detection (default: 100)')
-    parser.add_argument('--jaw-variance', type=float, default=500.0,
-                        help='Variance threshold for jaw clench detection (default: 500)')
+    parser.add_argument('--jaw-threshold', type=float, default=300.0,
+                        help='Amplitude threshold for jaw clench detection (default: 300)')
+    parser.add_argument('--jaw-variance', type=float, default=5000.0,
+                        help='Variance threshold for jaw clench detection (default: 5000)')
 
     args = parser.parse_args()
     params = BrainFlowInputParams()
