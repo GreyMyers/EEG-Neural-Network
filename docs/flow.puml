@@ -1,5 +1,5 @@
-@startuml
-title EEG-Based BCI Wheelchair Control System — Block Diagram
+@startuml name
+title EEG-Based BCI Wheelchair Control System - Block Diagram
 
 skinparam rectangle {
   BackgroundColor #EEF2FF
@@ -26,7 +26,7 @@ rectangle "EEG Headset" as Headset {
   component "Electrodes (8 Ch)" as Electrodes
   node "OpenBCI Cyton Controller\n(8-Ch, 250 Hz)" as Cyton
   component "Wireless / USB Data Link\n(Bluetooth / Serial)" as Comms
-  component "EEG Signal (μV level)" as EEG
+  component "EEG Signal (uV level)" as EEG
 
   ' Data flow inside the headset
   Electrodes --> EEG : Brain activity
@@ -38,28 +38,28 @@ rectangle "Real-Time Motor Control\n(real_time_motor.py)" as PC {
   component "BrainFlow API\n(BoardShim)" as Brainflow
   
   rectangle "Signal Acquisition Thread\n(acquire_signals)" as AcqThread {
-    component "get_current_board_data(250)\n• 8 channels × 250 samples\n• Overlapped windows (0.5s interval)" as DataBuffer
+    component "get_current_board_data(250)\n8 channels x 250 samples\nOverlapped windows (0.5s)" as DataBuffer
   }
   
   rectangle "Compute Thread\n(compute_signals)" as CompThread {
-    component "Jaw Clench Detection\n(Channel 8 / Electrode 8)\n• Amplitude Threshold\n• Variance Threshold" as JawDetect
+    component "Jaw Clench Detection\n(Channel 8 / Electrode 8)\nAmplitude & Variance Threshold" as JawDetect
     
-    component "Preprocessing (functions.py)\n• Band-pass 8–30 Hz\n• COI3 Wavelet (order 0)\n• FFT Extraction" as Preprocess
+    component "Preprocessing (functions.py)\nBand-pass 8-30 Hz\nCOI3 Wavelet (order 0)\nFFT Extraction" as Preprocess
     
     component "Deep Learning Model\n(Keras CNN)\n77.5-149epoch model" as Model
     
-    component "EMA Smoothing\n(α = 0.4)\n• Confidence > 80%" as EMA
+    component "EMA Smoothing\n(alpha = 0.4)\nConfidence > 80%" as EMA
     
-    component "Command Logic\n• JAW CLENCH → FORWARD\n• LEFT imagery → LEFT\n• RIGHT imagery → RIGHT\n• Low confidence → STOP" as CommandLogic
+    component "Command Logic\nJAW CLENCH -> FORWARD\nLEFT imagery -> LEFT\nRIGHT imagery -> RIGHT\nLow confidence -> STOP" as CommandLogic
   }
   
   component "Motor Controller\n(motor_control.py)\nSerial Link to ESP32" as MotorCtrl
   
   Brainflow --> DataBuffer
-  DataBuffer --> JawDetect : Raw EEG (8×250)
-  JawDetect --> CommandLogic : <color:green>FORWARD</color>\n(priority)
-  DataBuffer --> Preprocess : Raw EEG (8×250)
-  Preprocess --> Model : Preprocessed Input\n(1×8×250×1)
+  DataBuffer --> JawDetect : Raw EEG (8x250)
+  JawDetect --> CommandLogic : FORWARD (priority)
+  DataBuffer --> Preprocess : Raw EEG (8x250)
+  Preprocess --> Model : Preprocessed Input\n(1x8x250x1)
   Model --> EMA : Probabilities [L, R]
   EMA --> CommandLogic : Predicted Action
   CommandLogic --> MotorCtrl : execute_action()
@@ -71,14 +71,14 @@ rectangle "Embedded Interface" as ESP {
   component "Motor Driver Interface\n(BTS7960 / H-Bridge)" as MotorIF
   component "Dual DC Motors / Wheel Assembly" as Motors
 
-  MotorCtrl --> UART : Commands\n(W/A/D/S)
+  MotorCtrl --> UART : Commands (W/A/D/S)
   UART --> MotorIF : PWM Direction Signals
   MotorIF --> Motors : Forward / Left / Right / Stop
 }
 
 ' --- Flow Connections ---
 User --> Electrodes : Imagines Hand Movement\n& Clenches Jaw
-Comms --> Brainflow : Transmit Raw EEG\n(COM port)
+Comms --> Brainflow : Transmit Raw EEG (COM port)
 Motors --> User : Physical Movement Feedback
 
 note right of JawDetect
