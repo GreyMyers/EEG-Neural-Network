@@ -20,37 +20,6 @@ class Shared:
 
 #############################################################
 
-def detect_jaw_clench(sample, channel_idx=7, threshold=300, window_variance_threshold=5000):
-    """
-    Detect jaw clench from electrode 8 (channel index 7)
-    Jaw clench produces high amplitude EMG artifact
-    
-    Args:
-        sample: EEG data array (8 channels x 250 samples)
-        channel_idx: Channel index for jaw electrode (default 7 for electrode 8)
-        threshold: Amplitude threshold for detection
-        window_variance_threshold: Variance threshold for muscle activity
-    
-    Returns:
-        bool: True if jaw clench detected
-    """
-    if sample is None or len(sample.shape) < 2:
-        return False
-    
-    jaw_channel = sample[channel_idx]
-    
-    # Check for high amplitude (EMG artifact from jaw clench)
-    max_amplitude = np.max(np.abs(jaw_channel))
-    
-    # Check for high variance (muscle activity creates noise)
-    variance = np.var(jaw_channel)
-    
-    # Jaw clench produces high amplitude and high variance
-    is_clenched = (max_amplitude > threshold) or (variance > window_variance_threshold)
-    
-    return is_clenched
-
-
 def acquire_signals():
     count = 0
     while True:
@@ -72,7 +41,7 @@ def acquire_signals():
         time.sleep(0.1)
 
 
-def compute_signals(motor_controller=None, jaw_amp_threshold=100, jaw_var_threshold=500):
+def compute_signals(motor_controller=None):
     MODEL_NAME = "models/grey/77.5-149epoch-1764644886-loss-0.54.keras"
     model = keras.models.load_model(MODEL_NAME)
     EMA = [-1, -1]  # exponential moving average over the probabilities of the model (2 classes: left/right)
@@ -81,28 +50,7 @@ def compute_signals(motor_controller=None, jaw_amp_threshold=100, jaw_var_thresh
 
     while True:
         with mutex:
-            # Check for jaw clench FIRST (priority control - channel 8)
-            jaw_clenched = detect_jaw_clench(
-                shared_vars.sample,
-                channel_idx=7,  # Electrode 8 (0-indexed)
-                threshold=jaw_amp_threshold,
-                window_variance_threshold=jaw_var_threshold
-            )
-            
-            if jaw_clenched:
-                # JAW CLENCH DETECTED → FORWARD (W command)
-                current_command = "forward"
-                if motor_controller and motor_controller.connected:
-                    if current_command != last_command:
-                        motor_controller.execute_action(current_command, throttled=False)
-                        print(f"JAW CLENCH → Motor: FORWARD (W)")
-                        last_command = current_command
-                else:
-                    print("JAW CLENCH → FORWARD")
-                time.sleep(0.1)
-                continue  # Skip neural network prediction when jaw is clenched
-            
-            # prediction on the task (left/right motor imagery)
+            # prediction on the task
             nn_input, ffts = preprocess_raw_eeg(shared_vars.sample.reshape((1, 8, 250)),
                                                 fs=250, lowcut=8, highcut=30, coi3order=0)
             nn_input = nn_input.reshape((1, 8, 250, 1))  # 4D Tensor
@@ -156,10 +104,6 @@ if __name__ == '__main__':
                         required=False, default='COM4')
     parser.add_argument('--motor-port', type=str, help='Motor controller COM port (auto-detect if not specified)',
                         required=False, default='COM5')
-    parser.add_argument('--jaw-threshold', type=float, default=300.0,
-                        help='Amplitude threshold for jaw clench detection (default: 300)')
-    parser.add_argument('--jaw-variance', type=float, default=5000.0,
-                        help='Variance threshold for jaw clench detection (default: 5000)')
 
     args = parser.parse_args()
     params = BrainFlowInputParams()
@@ -185,21 +129,13 @@ if __name__ == '__main__':
         exit(1)
     else:
         print("Motor controller connected successfully!")
-        print(f"\nControls:")
-        print(f"  - JAW CLENCH (channel 8) → FORWARD (W)")
-        print(f"  - LEFT motor imagery    → LEFT (A)")
-        print(f"  - RIGHT motor imagery   → RIGHT (D)")
-        print(f"\nJaw Clench Thresholds:")
-        print(f"  - Amplitude: {args.jaw_threshold}")
-        print(f"  - Variance: {args.jaw_variance}")
 
     board.start_stream()  # use this for default options
 
     try:
         acquisition = threading.Thread(target=acquire_signals)
         acquisition.start()
-        computing = threading.Thread(target=compute_signals, 
-                                     args=(motor_controller, args.jaw_threshold, args.jaw_variance))
+        computing = threading.Thread(target=compute_signals, args=(motor_controller,))
         computing.start()
 
         acquisition.join()
